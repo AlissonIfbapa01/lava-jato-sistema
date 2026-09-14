@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0d12">
+  <title>Lava Jata Dois Irmãos</title>
+  <link rel="icon" type="image/png" href="./logo-dois-irmaos.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=6">
+</head>
+
+<body>
+  <section class="login-screen" id="loginScreen" aria-label="Acesso ao sistema">
+    <div class="login-ambient ambient-one"></div>
+    <div class="login-ambient ambient-two"></div>
+    <div class="login-card">
+      <div class="login-logo"><img src="logo-dois-irmaos-transparente.png" alt="Lava Jato Dois Irmãos"></div>
+      <form class="login-panel" id="loginForm">
+        <p class="section-kicker">ÁREA RESTRITA</p>
+        <h2>Bem-vindo de volta</h2>
+        <p class="login-subtitle">Entre com uma das contas administrativas autorizadas.</p>
+        <label>Usuário<input id="loginUsername" name="username" autocomplete="username" required
+            placeholder="Digite seu usuário"></label>
+        <label>Senha<div class="password-field"><input id="loginPassword" name="password" type="password"
+              autocomplete="current-password" required placeholder="Digite sua senha"><button class="password-toggle"
+              type="button" id="passwordToggle" aria-label="Mostrar senha">◉</button></div></label>
+        <p class="login-error" id="loginError" role="alert" hidden>Usuário ou senha incorretos.</p>
+        <button class="login-button" type="submit">Entrar no sistema <span>→</span></button>
+      </form>
+      <div class="login-security"> Acesso exclusivo para administradores</div>
+    </div>
+  </section>
+  <div class="app-shell">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" id="sidebarClose" type="button" aria-label="Fechar menu">×</button>
+      <div class="brand">
+        <div class="brand-mark" role="img" aria-label="Logo Lava Jato Dois Irmãos"></div>
+        <div><strong>DOIS IRMÃOS</strong><span>GESTÃO DO LAVA JATO</span></div>
+      </div>
+      <nav class="main-nav" aria-label="Navegação principal">
+        <button class="nav-item active" data-section="dashboard"><span>▦</span>Dashboard</button>
+        <button class="nav-item" data-section="services"><span>▣</span>Serviços <b id="servicesBadge">0</b></button>
+        <button class="nav-item" data-section="employees"><span>♙</span>Funcionários</button>
+        <button class="nav-item" data-section="payroll"><span>◫</span>Salário semanal</button>
+        <button class="nav-item" data-section="inventory"><span>◈</span>Estoque</button>
+        <button class="nav-item" data-section="expenses"><span>◒</span>Gastos</button>
+        <button class="nav-item" data-section="reports"><span>▤</span>Relatórios</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="nav-item" data-section="settings"><span>⚙</span>Configurações</button>
+        <div class="user-card">
+          <div class="avatar">A</div>
+          <div><strong id="activeUserName">Administrador</strong><span id="activeUserRole">Acesso total</span></div>
+          <button class="more-button" id="logoutButton" type="button" title="Sair do sistema">↪</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" id="menuToggle" aria-label="Abrir menu">☰</button>
+        <div class="page-heading">
+          <p id="pageEyebrow">VISÃO GERAL</p>
+          <h1 id="pageTitle">Dashboard</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="today"><span>◷</span><span id="todayLabel"></span></div>
+          <button class="icon-button" id="themeToggle" type="button" aria-label="Alternar tema">☼</button>
+          <button class="primary-button" id="newServiceTop" type="button"><span>＋</span> Novo serviço</button>
+        </div>
+      </header>
+
+      <div id="appNotice" class="toast" role="status" aria-live="polite"></div>
+
+      <section class="content-section active" id="dashboard">
+        <div class="hero-row">
+          <div>
+            <p class="section-kicker">OPERAÇÃO EM DIA</p>
+            <h2>Olá, <span id="dashboardUserName">Administrador</span> <span></span></h2>
+            <p class="muted">Acompanhe o desempenho do seu lava jato hoje.</p>
+          </div>
+          <button class="secondary-button" id="dashAddService" type="button">＋ Registrar lavagem</button>
+        </div>
+        <div class="metric-grid">
+          <article class="metric-card revenue">
+            <div class="metric-icon">↗</div>
+            <div>
+              <p>Faturamento do mês</p><strong id="metricRevenue">R$ 0,00</strong><small id="revenueTrend">—</small>
+            </div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon">▣</div>
+            <div>
+              <p>Serviços concluídos</p><strong id="metricServices">0</strong><small id="servicesTrend">este mês</small>
+            </div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon">◉</div>
+            <div>
+              <p>Ticket médio</p><strong id="metricTicket">R$ 0,00</strong><small>por lavagem</small>
+            </div>
+          </article>
+          <article class="metric-card warning">
+            <div class="metric-icon">!</div>
+            <div>
+              <p>Estoque baixo</p><strong id="metricStock">0 itens</strong><small>precisam de atenção</small>
+            </div>
+          </article>
+        </div>
+        <div class="dashboard-grid">
+          <article class="panel revenue-panel">
+            <div class="panel-header">
+              <div>
+                <h3>Faturamento semanal</h3>
+                <p>Serviços concluídos nos últimos 7 dias</p>
+              </div><span class="legend"><i></i> Receitas</span>
+            </div>
+            <div class="bar-chart" id="weeklyChart" aria-label="Gráfico de faturamento semanal"></div>
+          </article>
+          <article class="panel agenda-panel">
+            <div class="panel-header">
+              <div>
+                <h3>Agenda de hoje</h3>
+                <p id="agendaSubtitle">Nenhum serviço agendado</p>
+              </div><button class="text-button" data-go="services" type="button">Ver todos →</button>
+            </div>
+            <div class="agenda-list" id="agendaList"></div>
+          </article>
+          <article class="panel recent-panel">
+            <div class="panel-header">
+              <div>
+                <h3>Serviços recentes</h3>
+                <p>Últimos registros concluídos</p>
+              </div><button class="text-button" data-go="services" type="button">Ver histórico →</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Cliente / veículo</th>
+                    <th>Serviço</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="recentServices"></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="panel productivity-panel">
+            <div class="panel-header">
+              <div>
+                <h3>Equipe em destaque</h3>
+                <p>Por serviços concluídos no mês</p>
+              </div>
+            </div>
+            <div class="leaderboard" id="leaderboard"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section" id="services">
+        <div class="section-toolbar">
+          <div>
+            <p class="section-kicker">OPERAÇÃO</p>
+            <h2>Serviços</h2>
+            <p class="muted">Controle cada lavagem, responsáveis e recebimentos.</p>
+          </div><button class="primary-button open-service" type="button">＋ Novo serviço</button>
+        </div>
+        <div class="filter-bar"><label class="search-field"><span>⌕</span><input id="serviceSearch" type="search"
+              placeholder="Buscar por cliente, placa ou veículo"></label><select id="serviceStatusFilter">
+            <option value="all">Todos os status</option>
+            <option value="Agendado">Agendados</option>
+            <option value="Em andamento">Em andamento</option>
+            <option value="Concluído">Concluídos</option>
+            <option value="Cancelado">Cancelados</option>
+          </select><input type="date" id="serviceDateFilter"><button class="secondary-button" id="clearServiceFilters"
+            type="button">Limpar filtros</button></div>
+        <div class="panel table-panel">
+          <div class="table-wrap">
+            <table class="data-table large-table">
+              <thead>
+                <tr>
+                  <th>Data / hora</th>
+                  <th>Cliente</th>
+                  <th>Veículo</th>
+                  <th>Serviço</th>
+                  <th>Responsáveis</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="servicesTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section" id="employees">
+        <div class="section-toolbar">
+          <div>
+            <p class="section-kicker">PESSOAS</p>
+            <h2>Funcionários</h2>
+            <p class="muted">Cadastre a equipe e defina o percentual por lavagem.</p>
+          </div><button class="primary-button" id="openEmployee" type="button">＋ Adicionar funcionário</button>
+        </div>
+        <div class="employee-grid" id="employeeCards"></div>
+      </section>
+
+      <section class="content-section" id="payroll">
+        <div class="section-toolbar">
+          <div>
+            <p class="section-kicker">FINANCEIRO</p>
+            <h2>Salário semanal</h2>
+            <p class="payroll-intro">Atenção: O cálculo é feito automaticanete pelo percentual de participação de cada funcionário em cada lavagem.</p>
+          </div><button class="secondary-button" id="printPayroll" type="button">▣ Imprimir resumo</button>
+        </div>
+        <div>
+          <div ></div>
+        </div>
+        <div class="period-picker"><label>Semana de <input type="date" id="payrollStart"></label><label>até <input
+              type="date" id="payrollEnd"></label><button class="secondary-button" id="currentWeek" type="button">Semana
+            atual</button></div>
+        <div class="metric-grid payroll-metrics">
+          <article class="metric-card">
+            <div class="metric-icon">◷</div>
+            <div>
+              <p>Serviços no período</p><strong id="payrollJobCount">0</strong><small>concluídos</small>
+            </div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon">↗</div>
+            <div>
+              <p>Receita do período</p><strong id="payrollRevenue">R$ 0,00</strong><small>base de cálculo</small>
+            </div>
+          </article>
+          <article class="metric-card accent">
+            <div class="metric-icon">%</div>
+            <div>
+              <p>Total a pagar</p><strong id="payrollTotal">R$ 0,00</strong><small>comissões da equipe</small>
+            </div>
+          </article>
+        </div>
+        <div class="panel table-panel">
+          <div class="panel-header">
+            <div>
+              <h3>Resumo por funcionário</h3>
+              <p>Valores calculados no período selecionado</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table large-table">
+              <thead>
+                <tr>
+                  <th>Funcionário</th>
+                  <th>Percentual</th>
+                  <th>Lavagens</th>
+                  <th>Base de serviços</th>
+                  <th>Comissão a pagar</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="payrollTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section" id="inventory">
+        <div class="section-toolbar">
+          <div>
+            <p class="section-kicker">SUPRIMENTOS</p>
+            <h2>Estoque</h2>
+            <p class="muted">Monitore produtos, quantidades e nível mínimo.</p>
+          </div>
+          <div class="button-group"><button class="secondary-button" id="openInventoryMove" type="button">⇄ Movimentar
+              estoque</button><button class="primary-button" id="openProduct" type="button">＋ Novo produto</button>
+          </div>
+        </div>
+        <div class="metric-grid compact-metrics">
+          <article class="metric-card">
+            <div class="metric-icon">◈</div>
+            <div>
+              <p>Produtos cadastrados</p><strong id="productCount">0</strong><small>itens ativos</small>
+            </div>
+          </article>
+          <article class="metric-card warning">
+            <div class="metric-icon">!</div>
+            <div>
+              <p>Estoque baixo</p><strong id="lowStockCount">0</strong><small>abaixo do mínimo</small>
+            </div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon">R$</div>
+            <div>
+              <p>Valor em estoque</p><strong id="stockValue">R$ 0,00</strong><small>custo estimado</small>
+            </div>
+          </article>
+        </div>
+        <div class="panel table-panel">
+          <div class="table-wrap">
+            <table class="data-table large-table">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Categoria</th>
+                  <th>Quantidade</th>
+                  <th>Mínimo</th>
+                  <th>Custo unit.</th>
+                  <th>Valor total</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section" id="expenses">
+        <div class="section-toolbar">
+          <div>
+            <p class="section-kicker">FINANCEIRO</p>
+            <h2>Gastos</h2>
+            <p class="muted">Registre despesas operacionais e acompanhe as saídas.</p>
+          </div><button class="primary-button" id="openExpense" type="button">＋ Registrar gasto</button>
+        </div>
+        <div class="metric-grid compact-metrics">
+          <article class="metric-card danger">
+            <div class="metric-icon">↓</div>
+            <div>
+              <p>Gastos do mês</p><strong id="expensesMonth">R$ 0,00</strong><small>despesas registradas</small>
+            </div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon">▤</div>
+            <div>
+              <p>Maior categoria</p><strong id="topExpenseCategory">—</strong><small id="topExpenseAmount">sem
+                lançamentos</small>
+            </div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon">◷</div>
+            <div>
+              <p>Registros no mês</p><strong id="expenseCount">0</strong><small>lançamentos</small>
+            </div>
+          </article>
+        </div>
+        <div class="panel table-panel">
+          <div class="table-wrap">
+            <table class="data-table large-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Descrição</th>
+                  <th>Categoria</th>
+                  <th>Fornecedor</th>
+                  <th>Pagamento</th>
+                  <th>Valor</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="expensesTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section" id="reports">
+        <div class="section-toolbar">
+          <div>
+            <p class="section-kicker">ANÁLISES</p>
+            <h2>Relatórios</h2>
+            <p class="muted">Personalize o período e gere uma visão financeira do negócio.</p>
+          </div>
+        </div>
+        <div class="report-builder panel">
+          <div class="panel-header">
+            <div>
+              <h3>Personalizar relatório</h3>
+              <p>Selecione os dados que deseja analisar.</p>
+            </div>
+          </div>
+          <div class="report-filters"><label>Data inicial<input type="date" id="reportStart"></label><label>Data
+              final<input type="date" id="reportEnd"></label><label>Tipo de relatório<select id="reportType">
+                <option value="financial">Resumo financeiro</option>
+                <option value="services">Serviços realizados</option>
+                <option value="team">Produção da equipe</option>
+              </select></label><label>Status dos serviços<select id="reportStatus">
+                <option value="Concluído">Concluídos</option>
+                <option value="all">Todos os status</option>
+              </select></label><button class="primary-button" id="generateReport" type="button">▤ Gerar
+              relatório</button></div>
+        </div>
+        <div id="reportOutput" class="report-output"></div>
+      </section>
+
+      <section class="content-section" id="settings">
+        <div class="section-toolbar">
+          <div>
+            <p class="section-kicker">SISTEMA</p>
+            <h2>Configurações</h2>
+            <p class="muted">Dados gerais exibidos na gestão.</p>
+          </div>
+        </div>
+        <form class="panel settings-form" id="settingsForm">
+          <div class="form-grid"><label>Nome do negócio<input id="businessName" required></label><label>WhatsApp<input
+                id="businessPhone" placeholder="(00) 00000-0000"></label><label>Meta mensal de faturamento (R$)<input
+                id="monthlyGoal" type="number" min="0" step="0.01"></label></div>
+          <div class="settings-note">As duas contas de administrador são fixas e não podem ser criadas ou alteradas
+            nesta tela.</div>
+          <div class="form-actions"><button class="primary-button" type="submit">Salvar configurações</button></div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden></div>
+  <div class="modal" id="appModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+    <div class="modal-header">
+      <div>
+        <p class="section-kicker" id="modalEyebrow">CADASTRO</p>
+        <h2 id="modalTitle">Novo registro</h2>
+      </div><button class="icon-button modal-close" type="button" aria-label="Fechar">×</button>
+    </div>
+    <form id="modalForm" class="modal-form"></form>
+  </div>
+
+  <script src="app.js?v=6"></script>
+</body>
+
+</html>

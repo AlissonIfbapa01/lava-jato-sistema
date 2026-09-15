@@ -111,7 +111,7 @@ body.authenticated .login-screen {
   content: "";
   position: absolute;
   inset: 0;
-  background: url("logo-dois-irmaos.jpeg") center 57% / 96px auto no-repeat;
+  background: url("logo-dois-irmaos.png") center 57% / 96px auto no-repeat;
   filter: contrast(1.65) brightness(1.06);
 }
 

@@ -37,6 +37,18 @@ function initials(name) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 function uid(prefix) { return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`; }
+// Formas de pagamento com liquidez imediata (caixa/pix) x formas que costumam
+// cair em conta com prazo de compensação (cartão/boleto). Usado nos relatórios
+// para diferenciar "faturamento" (o que foi vendido) de "liquidez" (o que já
+// está disponível em caixa de fato).
+const IMMEDIATE_PAYMENTS = ["Pix", "Dinheiro"];
+const PENDING_PAYMENTS = ["Cartão", "Boleto"];
+function isImmediatePayment(payment) { return IMMEDIATE_PAYMENTS.includes(payment); }
+const ROLE_SUGGESTIONS = {
+  Gerente: { min: 22, max: 30, note: "Gerentes costumam receber um percentual maior por acumular funções de supervisão." },
+  Lavador: { min: 15, max: 20, note: "Faixa comum para quem executa a lavagem diretamente." },
+  Auxiliar: { min: 8, max: 12, note: "Auxiliares em geral apoiam o serviço e recebem um percentual menor." }
+};
 function statusClass(status) {
   return ({ "Concluído": "done", "Em andamento": "progress", "Agendado": "scheduled", "Cancelado": "cancelled" })[status] || "scheduled";
 }
@@ -46,6 +58,9 @@ function escapeHtml(value = "") { return String(value).replace(/[&<>'"]/g, (char
 function seedData() {
   return {
     business: { name: "Lava Jato Dois Irmãos", admin: "Administrador", phone: "", goal: 12000 },
+    // Perfis dos administradores (foto, nome de exibição e dados de contato).
+    // Não guarda senha — login continua controlado pelo servidor.
+    profiles: {},
     employees: [
       { id: "emp-1", name: "João Silva", role: "Lavador", commission: 18, active: true },
       { id: "emp-2", name: "Marcos Souza", role: "Lavador", commission: 15, active: true },
@@ -93,6 +108,9 @@ async function carregarDadosDoServidor() {
         appointments: resultado.dados.appointments || [],
         payments: resultado.dados.payments || [],
         employees: resultado.dados.employees || [],
+        inventory: resultado.dados.inventory || [],
+        expenses: resultado.dados.expenses || [],
+        profiles: resultado.dados.profiles || {},
         business: resultado.dados.business || seedData().business
       };
     }
@@ -101,6 +119,7 @@ async function carregarDadosDoServidor() {
     dirtySections.clear();
     pendingRenders.clear();
 
+    applyProfileToChrome();
     init();
 
   } catch (erro) {
@@ -190,7 +209,7 @@ function dashboardStats() {
 }
 function renderDashboard() {
   const stats = dashboardStats();
-  $("#dashboardUserName").textContent = currentAdmin?.name || "Administrador";
+  $("#dashboardUserName").textContent = displayName();
   $("#metricRevenue").textContent = money(stats.revenue);
   $("#metricServices").textContent = stats.completedThisMonth.length;
   $("#metricTicket").textContent = money(stats.ticket);
@@ -263,9 +282,43 @@ function renderPayroll() {
     total += commission;
     return { employee, employeeJobs, base, commission };
   });
+  const ownerShare = revenue - total;
+
   $("#payrollJobCount").textContent = jobs.length;
   $("#payrollRevenue").textContent = money(revenue);
   $("#payrollTotal").textContent = money(total);
+
+  const ownerCard = $("#payrollOwnerShare");
+  if (ownerCard) ownerCard.textContent = money(ownerShare);
+  const ownerPercentCard = $("#payrollOwnerPercent");
+  if (ownerPercentCard) ownerPercentCard.textContent = revenue ? `${((ownerShare / revenue) * 100).toFixed(1)}% da receita do período` : "sem receita no período";
+  const teamPercentCard = $("#payrollTeamPercent");
+  if (teamPercentCard) teamPercentCard.textContent = revenue ? `${((total / revenue) * 100).toFixed(1)}% da receita do período` : "sem receita no período";
+
+  // Resumo por função: agrupa Gerente / Lavador / Auxiliar para deixar claro
+  // quanto cada camada da equipe representa no total pago em comissões.
+  const roleGroups = {};
+  rows.forEach((row) => {
+    const role = row.employee.role || "Outros";
+    if (!roleGroups[role]) roleGroups[role] = { role, people: 0, jobs: 0, base: 0, commission: 0, percentages: [] };
+    roleGroups[role].people += 1;
+    roleGroups[role].jobs += row.employeeJobs.length;
+    roleGroups[role].base += row.base;
+    roleGroups[role].commission += row.commission;
+    roleGroups[role].percentages.push(row.employee.commission);
+  });
+  const roleOrder = ["Gerente", "Lavador", "Auxiliar"];
+  const roleRows = Object.values(roleGroups).sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role));
+  const roleTable = $("#payrollRoleTable");
+  if (roleTable) {
+    roleTable.innerHTML = roleRows.length ? roleRows.map((group) => {
+      const min = Math.min(...group.percentages);
+      const max = Math.max(...group.percentages);
+      const range = min === max ? `${min}%` : `${min}% – ${max}%`;
+      return `<tr><td><strong>${escapeHtml(group.role)}</strong></td><td>${group.people}</td><td>${range}</td><td>${group.jobs}</td><td class="money">${money(group.commission)}</td><td>${total ? `${((group.commission / total) * 100).toFixed(1)}%` : "—"}</td></tr>`;
+    }).join("") : emptyTable(6, "Cadastre funcionários para ver o resumo por função.");
+  }
+
   $("#payrollTable").innerHTML = rows.length ? rows.map((row) => `<tr><td class="employee-cell"><strong>${escapeHtml(row.employee.name)}</strong><span>${escapeHtml(row.employee.role)}</span></td><td>${row.employee.commission}%</td><td>${row.employeeJobs.length}</td><td>${money(row.base)}</td><td class="money">${money(row.commission)}</td><td><button class="row-action" type="button" title="Ver serviços" data-action="show-employee-jobs" data-id="${row.employee.id}">⌕</button></td></tr>`).join("") : emptyTable(6, "Cadastre funcionários para ver a folha semanal.");
 }
 
@@ -274,6 +327,12 @@ function renderInventory() {
   $("#productCount").textContent = data.inventory.length;
   $("#lowStockCount").textContent = low.length;
   $("#stockValue").textContent = money(sum(data.inventory, (product) => product.quantity * product.cost));
+  // Diferente do "Valor em estoque" (patrimônio parado hoje), este indicador
+  // mostra o quanto já saiu de caixa este mês comprando produtos — evita que
+  // a mesma informação de compra fique perdida/duplicada entre Estoque e Gastos.
+  const stockSpendMonth = sum(monthExpenses().filter((expense) => expense.category === "Estoque"), (expense) => expense.amount);
+  const stockSpendCard = $("#stockSpendMonth");
+  if (stockSpendCard) stockSpendCard.textContent = money(stockSpendMonth);
   $("#inventoryTable").innerHTML = data.inventory.length ? data.inventory.map((product) => {
     const isLow = Number(product.quantity) <= Number(product.minimum);
     return `<tr><td><strong>${escapeHtml(product.name)}</strong></td><td>${escapeHtml(product.category)}</td><td class="money">${Number(product.quantity).toLocaleString("pt-BR")} ${escapeHtml(product.unit)}</td><td>${Number(product.minimum).toLocaleString("pt-BR")} ${escapeHtml(product.unit)}</td><td>${money(product.cost)}</td><td class="money">${money(product.cost * product.quantity)}</td><td><span class="status ${isLow ? "scheduled" : "done"}">${isLow ? "Estoque baixo" : "Normal"}</span></td><td><div class="row-actions"><button class="row-action" type="button" data-action="edit-product" data-id="${product.id}" title="Editar">✎</button><button class="row-action" type="button" data-action="delete-product" data-id="${product.id}" title="Excluir">⌫</button></div></td></tr>`;
@@ -297,6 +356,26 @@ function reportRange() {
   return { start: $("#reportStart").value, end: $("#reportEnd").value, status: $("#reportStatus").value };
 }
 function inRange(item, range) { return (!range.start || item.date >= range.start) && (!range.end || item.date <= range.end); }
+function paymentBreakdown(services) {
+  const groups = {};
+  services.forEach((service) => {
+    const key = service.payment || "Outro";
+    if (!groups[key]) groups[key] = { payment: key, count: 0, total: 0 };
+    groups[key].count += 1;
+    groups[key].total += Number(service.price || 0);
+  });
+  return Object.values(groups).sort((a, b) => b.total - a.total);
+}
+function expenseBreakdown(expenses) {
+  const groups = {};
+  expenses.forEach((expense) => {
+    const key = expense.category || "Outros";
+    if (!groups[key]) groups[key] = { category: key, count: 0, total: 0 };
+    groups[key].count += 1;
+    groups[key].total += Number(expense.amount || 0);
+  });
+  return Object.values(groups).sort((a, b) => b.total - a.total);
+}
 function renderReport() {
   const range = reportRange();
   const type = $("#reportType").value;
@@ -305,27 +384,103 @@ function renderReport() {
   const revenue = sum(concluded, (service) => service.price);
   const expenses = data.expenses.filter((expense) => inRange(expense, range));
   const expenseTotal = sum(expenses, (expense) => expense.amount);
-  const title = { financial: "Resumo financeiro", services: "Serviços realizados", team: "Produção da equipe" }[type];
+  const payout = concluded.reduce((total, service) => total + serviceEmployees(service).reduce((subtotal, employee) => subtotal + service.price * employee.commission / 100, 0), 0);
+  const title = { financial: "Resumo financeiro completo", liquidity: "Faturamento x Liquidez (caixa)", services: "Serviços realizados", team: "Produção da equipe" }[type];
   const dateTitle = `${range.start ? formatDate(range.start) : "início"} a ${range.end ? formatDate(range.end) : "hoje"}`;
   let body = "";
+
   if (type === "financial") {
-    const payout = concluded.reduce((total, service) => total + serviceEmployees(service).reduce((subtotal, employee) => subtotal + service.price * employee.commission / 100, 0), 0);
-    body = `<div class="report-summary"><article class="metric-card revenue"><div class="metric-icon">↗</div><div><p>Receitas</p><strong>${money(revenue)}</strong><small>${concluded.length} serviços concluídos</small></div></article><article class="metric-card danger"><div class="metric-icon">↓</div><div><p>Gastos</p><strong>${money(expenseTotal)}</strong><small>${expenses.length} lançamentos</small></div></article><article class="metric-card accent"><div class="metric-icon">◉</div><div><p>Resultado operacional</p><strong>${money(revenue - expenseTotal - payout)}</strong><small>Receita − gastos − comissões</small></div></article></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Indicador</th><th>Valor</th></tr></thead><tbody><tr><td>Comissões projetadas da equipe</td><td class="money">${money(payout)}</td></tr><tr><td>Ticket médio</td><td class="money">${money(concluded.length ? revenue / concluded.length : 0)}</td></tr><tr><td>Margem antes de comissões</td><td class="money">${money(revenue - expenseTotal)}</td></tr></tbody></table></div>`;
+    // Faturamento = tudo que foi vendido (bruto). Resultado líquido = o que
+    // realmente sobra depois de pagar a equipe e as despesas operacionais.
+    const ownerNet = revenue - payout;
+    const finalResult = ownerNet - expenseTotal;
+    const expenseGroups = expenseBreakdown(expenses);
+    body = `<div class="report-summary"><article class="metric-card revenue"><div class="metric-icon">↗</div><div><p>Faturamento bruto</p><strong>${money(revenue)}</strong><small>${concluded.length} serviços concluídos</small></div></article><article class="metric-card accent"><div class="metric-icon">%</div><div><p>Comissões da equipe</p><strong>${money(payout)}</strong><small>${revenue ? `${((payout / revenue) * 100).toFixed(1)}% do faturamento` : "—"}</small></div></article><article class="metric-card danger"><div class="metric-icon">↓</div><div><p>Despesas operacionais</p><strong>${money(expenseTotal)}</strong><small>${expenses.length} lançamentos</small></div></article><article class="metric-card ${finalResult >= 0 ? "revenue" : "danger"}"><div class="metric-icon">◉</div><div><p>Resultado líquido final</p><strong>${money(finalResult)}</strong><small>já descontando equipe e despesas</small></div></article></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Cálculo discriminado</th><th>Valor</th></tr></thead><tbody>
+      <tr><td>(+) Faturamento bruto (valor vendido em lavagens concluídas)</td><td class="money">${money(revenue)}</td></tr>
+      <tr><td>(−) Comissões pagas à equipe</td><td class="money">− ${money(payout)}</td></tr>
+      <tr class="report-subtotal"><td><strong>(=) Faturamento líquido do proprietário</strong></td><td class="money"><strong>${money(ownerNet)}</strong></td></tr>
+      <tr><td>(−) Despesas operacionais do período</td><td class="money">− ${money(expenseTotal)}</td></tr>
+      <tr class="report-subtotal"><td><strong>(=) Resultado líquido final (lucro do período)</strong></td><td class="money"><strong>${money(finalResult)}</strong></td></tr>
+      <tr><td>Ticket médio por lavagem</td><td class="money">${money(concluded.length ? revenue / concluded.length : 0)}</td></tr>
+    </tbody></table></div>
+    <h4 class="report-section-title">Despesas por categoria</h4>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Categoria</th><th>Lançamentos</th><th>Total</th><th>% das despesas</th></tr></thead><tbody>${expenseGroups.length ? expenseGroups.map((group) => `<tr><td>${escapeHtml(group.category)}</td><td>${group.count}</td><td class="money">${money(group.total)}</td><td>${expenseTotal ? `${((group.total / expenseTotal) * 100).toFixed(1)}%` : "—"}</td></tr>`).join("") : emptyTable(4, "Nenhuma despesa no período.")}</tbody></table></div>`;
+  } else if (type === "liquidity") {
+    // Faturamento (o que foi vendido) é diferente de liquidez (o que já está
+    // disponível em caixa). Pix e dinheiro entram na hora; cartão e boleto
+    // costumam ter prazo de compensação antes de virar saldo disponível.
+    const immediate = concluded.filter((service) => isImmediatePayment(service.payment));
+    const pending = concluded.filter((service) => !isImmediatePayment(service.payment));
+    const immediateTotal = sum(immediate, (service) => service.price);
+    const pendingTotal = sum(pending, (service) => service.price);
+    const cashBalance = immediateTotal - expenseTotal;
+    const breakdown = paymentBreakdown(concluded);
+    body = `<div class="report-summary"><article class="metric-card revenue"><div class="metric-icon">↗</div><div><p>Faturamento total</p><strong>${money(revenue)}</strong><small>tudo que foi vendido</small></div></article><article class="metric-card accent"><div class="metric-icon">$</div><div><p>Liquidez imediata</p><strong>${money(immediateTotal)}</strong><small>Pix + Dinheiro, já em caixa</small></div></article><article class="metric-card warning"><div class="metric-icon">◷</div><div><p>A receber (compensação)</p><strong>${money(pendingTotal)}</strong><small>Cartão + Boleto, prazo de queda</small></div></article><article class="metric-card ${cashBalance >= 0 ? "revenue" : "danger"}"><div class="metric-icon">◉</div><div><p>Saldo de caixa estimado</p><strong>${money(cashBalance)}</strong><small>liquidez imediata − despesas pagas</small></div></article></div>
+    <p class="report-note">Faturamento é tudo o que foi vendido no período (inclui vendas ainda a compensar). Liquidez é a parte que já pode ser considerada dinheiro disponível em caixa hoje.</p>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Forma de pagamento</th><th>Serviços</th><th>Valor</th><th>Classificação</th><th>% do faturamento</th></tr></thead><tbody>${breakdown.length ? breakdown.map((group) => `<tr><td>${escapeHtml(group.payment)}</td><td>${group.count}</td><td class="money">${money(group.total)}</td><td>${isImmediatePayment(group.payment) ? "Liquidez imediata" : "A receber / a compensar"}</td><td>${revenue ? `${((group.total / revenue) * 100).toFixed(1)}%` : "—"}</td></tr>`).join("") : emptyTable(5, "Nenhum serviço concluído no período.")}</tbody></table></div>`;
   } else if (type === "services") {
     body = `<div class="report-summary"><article class="metric-card"><div class="metric-icon">▣</div><div><p>Registros selecionados</p><strong>${services.length}</strong><small>${range.status === "all" ? "todos os status" : "serviços concluídos"}</small></div></article><article class="metric-card revenue"><div class="metric-icon">↗</div><div><p>Faturamento concluído</p><strong>${money(revenue)}</strong><small>no período</small></div></article><article class="metric-card"><div class="metric-icon">◉</div><div><p>Ticket médio</p><strong>${money(concluded.length ? revenue / concluded.length : 0)}</strong><small>por serviço concluído</small></div></article></div><div class="table-wrap"><table class="data-table large-table"><thead><tr><th>Data</th><th>Cliente</th><th>Veículo</th><th>Serviço</th><th>Valor</th><th>Status</th></tr></thead><tbody>${services.length ? services.sort((a, b) => b.date.localeCompare(a.date)).map((service) => `<tr><td>${formatDate(service.date)}</td><td>${escapeHtml(service.client)}</td><td>${escapeHtml(service.vehicle)}</td><td>${escapeHtml(service.service)}</td><td class="money">${money(service.price)}</td><td>${statusTag(service.status)}</td></tr>`).join("") : emptyTable(6, "Nenhum serviço no período selecionado.")}</tbody></table></div>`;
   } else {
     const teamRows = data.employees.map((employee) => { const jobs = concluded.filter((service) => service.employees.includes(employee.id)); return { employee, jobs, base: sum(jobs, (service) => service.price), commission: sum(jobs, (service) => service.price * employee.commission / 100) }; }).sort((a, b) => b.jobs.length - a.jobs.length);
-    body = `<div class="report-summary"><article class="metric-card"><div class="metric-icon">♙</div><div><p>Equipe analisada</p><strong>${data.employees.length}</strong><small>funcionários cadastrados</small></div></article><article class="metric-card"><div class="metric-icon">▣</div><div><p>Participações</p><strong>${teamRows.reduce((total, row) => total + row.jobs.length, 0)}</strong><small>em lavagens concluídas</small></div></article><article class="metric-card accent"><div class="metric-icon">%</div><div><p>Comissões</p><strong>${money(sum(teamRows, (row) => row.commission))}</strong><small>projeção do período</small></div></article></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Funcionário</th><th>Lavagens</th><th>Base gerada</th><th>Comissão</th></tr></thead><tbody>${teamRows.map((row) => `<tr><td><strong>${escapeHtml(row.employee.name)}</strong></td><td>${row.jobs.length}</td><td class="money">${money(row.base)}</td><td class="money">${money(row.commission)}</td></tr>`).join("")}</tbody></table></div>`;
+    body = `<div class="report-summary"><article class="metric-card"><div class="metric-icon">♙</div><div><p>Equipe analisada</p><strong>${data.employees.length}</strong><small>funcionários cadastrados</small></div></article><article class="metric-card"><div class="metric-icon">▣</div><div><p>Participações</p><strong>${teamRows.reduce((total, row) => total + row.jobs.length, 0)}</strong><small>em lavagens concluídas</small></div></article><article class="metric-card accent"><div class="metric-icon">%</div><div><p>Comissões</p><strong>${money(sum(teamRows, (row) => row.commission))}</strong><small>projeção do período</small></div></article></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Funcionário</th><th>Função</th><th>Lavagens</th><th>Base gerada</th><th>Comissão</th></tr></thead><tbody>${teamRows.map((row) => `<tr><td><strong>${escapeHtml(row.employee.name)}</strong></td><td>${escapeHtml(row.employee.role)}</td><td>${row.jobs.length}</td><td class="money">${money(row.base)}</td><td class="money">${money(row.commission)}</td></tr>`).join("")}</tbody></table></div>`;
   }
   $("#reportOutput").innerHTML = `<article class="panel"><div class="panel-header"><div><h3>${title}</h3><p>${dateTitle}</p></div><button class="secondary-button" type="button" id="printReport">▣ Imprimir</button></div>${body}<p class="report-footer">Gerado em ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date())} · ${escapeHtml(data.business.name)}</p></article>`;
   $("#printReport")?.addEventListener("click", () => window.print());
 }
 
+let pendingProfilePhoto; // undefined = sem alteração, null = remover, string = nova foto
 function renderSettings() {
   $("#businessName").value = data.business.name || "";
   $("#businessPhone").value = data.business.phone || "";
   $("#monthlyGoal").value = data.business.goal || "";
   $(".brand strong").textContent = (data.business.name || "Dois Irmãos").replace(/^Lava Jato\s*/i, "").toUpperCase();
+
+  pendingProfilePhoto = undefined;
+  const profile = currentProfile() || {};
+  $("#profileName").value = profile.name || currentAdmin?.name || "";
+  $("#profilePhone").value = profile.phone || "";
+  $("#profileRole").value = profile.role || "";
+  $("#profileBio").value = profile.bio || "";
+  renderProfileAvatarPreview(profile.photo || null);
+}
+function renderProfileAvatarPreview(photo) {
+  const preview = $("#profileAvatarPreview");
+  if (!preview) return;
+  if (photo) {
+    preview.style.backgroundImage = `url(${photo})`;
+    preview.style.backgroundSize = "cover";
+    preview.style.backgroundPosition = "center";
+    preview.textContent = "";
+  } else {
+    preview.style.backgroundImage = "";
+    preview.textContent = initials(displayName());
+  }
+}
+// Reduz a imagem escolhida para um quadrado pequeno em JPEG antes de guardar,
+// já que a foto é salva junto com todo o resto dos dados do sistema.
+function resizePhotoToDataUrl(file, maxSize = 240) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("Arquivo de imagem inválido."));
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        const side = Math.min(image.width, image.height);
+        const sx = (image.width - side) / 2;
+        const sy = (image.height - side) / 2;
+        canvas.width = maxSize;
+        canvas.height = maxSize;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, sx, sy, side, side, 0, 0, maxSize, maxSize);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 function openModal({ eyebrow = "CADASTRO", title, content, onSubmit }) {
   $("#modalEyebrow").textContent = eyebrow;
@@ -350,14 +505,23 @@ function openServiceModal(service = null) {
     }
   });
 }
+function roleSuggestionText(role) {
+  const suggestion = ROLE_SUGGESTIONS[role];
+  if (!suggestion) return "";
+  return `Faixa sugerida para ${role}: ${suggestion.min}% – ${suggestion.max}%. ${suggestion.note}`;
+}
 function openEmployeeModal(employee = null) {
   const e = employee || { name: "", role: "Lavador", commission: 15, active: true };
   openModal({
-    eyebrow: employee ? "EDIÇÃO DE EQUIPE" : "NOVA PESSOA", title: employee ? "Editar funcionário" : "Adicionar funcionário", content: `<div class="form-grid"><label class="full">Nome completo<input name="name" required value="${escapeHtml(e.name)}" placeholder="Nome do funcionário"></label><label>Função<select name="role"><option ${e.role === "Lavador" ? "selected" : ""}>Lavador</option><option ${e.role === "Auxiliar" ? "selected" : ""}>Auxiliar</option><option ${e.role === "Gerente" ? "selected" : ""}>Gerente</option></select></label><label>Percentual por lavagem<input name="commission" required type="number" min="0" max="100" step="0.5" value="${e.commission}"></label><label class="full check-label"><input type="checkbox" name="active" ${e.active ? "checked" : ""}> Funcionário ativo e disponível para os serviços</label></div>${modalActions(employee ? "Salvar alterações" : "Adicionar funcionário")}`, onSubmit: (formData) => {
+    eyebrow: employee ? "EDIÇÃO DE EQUIPE" : "NOVA PESSOA", title: employee ? "Editar funcionário" : "Adicionar funcionário", content: `<div class="form-grid"><label class="full">Nome completo<input name="name" required value="${escapeHtml(e.name)}" placeholder="Nome do funcionário"></label><label>Função<select name="role" id="employeeRoleSelect"><option ${e.role === "Lavador" ? "selected" : ""}>Lavador</option><option ${e.role === "Auxiliar" ? "selected" : ""}>Auxiliar</option><option ${e.role === "Gerente" ? "selected" : ""}>Gerente</option></select></label><label>Percentual por lavagem<input name="commission" required type="number" min="0" max="100" step="0.5" value="${e.commission}"></label><p class="field-hint full" id="employeeRoleHint">${roleSuggestionText(e.role)}</p><label class="full check-label"><input type="checkbox" name="active" ${e.active ? "checked" : ""}> Funcionário ativo e disponível para os serviços</label></div>${modalActions(employee ? "Salvar alterações" : "Adicionar funcionário")}`, onSubmit: (formData) => {
       const updated = { id: employee?.id || uid("emp"), name: formData.get("name").trim(), role: formData.get("role"), commission: Number(formData.get("commission")), active: formData.has("active") };
       if (employee) data.employees = data.employees.map((item) => item.id === employee.id ? updated : item); else data.employees.push(updated);
       closeModal(); saveData(); showNotice(employee ? "Funcionário atualizado." : "Funcionário adicionado à equipe.");
     }
+  });
+  $("#employeeRoleSelect")?.addEventListener("change", (event) => {
+    const hint = $("#employeeRoleHint");
+    if (hint) hint.textContent = roleSuggestionText(event.target.value);
   });
 }
 function openProductModal(product = null) {
@@ -372,14 +536,42 @@ function openProductModal(product = null) {
 }
 function openInventoryMovement() {
   if (!data.inventory.length) { showNotice("Cadastre um produto antes de movimentar o estoque."); return; }
+  const firstProduct = data.inventory[0];
   openModal({
-    eyebrow: "MOVIMENTAÇÃO", title: "Movimentar estoque", content: `<div class="form-grid"><label class="full">Produto<select name="product" required>${data.inventory.map((product) => `<option value="${product.id}">${escapeHtml(product.name)} (${product.quantity} ${product.unit})</option>`).join("")}</select></label><label class="full">Tipo de movimentação<div class="transaction-type"><label><input type="radio" name="type" value="entry" checked> Entrada</label><label><input type="radio" name="type" value="exit"> Saída</label></div></label><label>Quantidade<input name="quantity" type="number" min="0.01" step="0.01" required></label><label>Motivo<input name="reason" required placeholder="Ex.: compra, uso diário"></label></div>${modalActions("Confirmar movimentação")}`, onSubmit: (formData) => {
+    eyebrow: "MOVIMENTAÇÃO", title: "Movimentar estoque", content: `<div class="form-grid"><label class="full">Produto<select name="product" id="movementProduct" required>${data.inventory.map((product) => `<option value="${product.id}" data-cost="${product.cost}">${escapeHtml(product.name)} (${product.quantity} ${product.unit})</option>`).join("")}</select></label><label class="full">Tipo de movimentação<div class="transaction-type"><label><input type="radio" name="type" value="entry" id="movementEntry" checked> Entrada (compra)</label><label><input type="radio" name="type" value="exit" id="movementExit"> Saída (uso)</label></div></label><label>Quantidade<input name="quantity" id="movementQuantity" type="number" min="0.01" step="0.01" required></label><label>Motivo<input name="reason" required placeholder="Ex.: compra, uso diário"></label><label class="full check-label" id="movementExpenseToggleWrap"><input type="checkbox" name="registerExpense" id="movementRegisterExpense" checked> Registrar automaticamente esta compra em Gastos (evita lançar a mesma compra duas vezes)</label><div class="form-grid full" id="movementExpenseFields"><label>Valor total da compra (R$)<input name="expenseAmount" id="movementExpenseAmount" type="number" min="0" step="0.01" value="${(firstProduct.cost || 0).toFixed(2)}"></label><label>Forma de pagamento<select name="expensePayment"><option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Boleto</option></select></label></div></div>${modalActions("Confirmar movimentação")}`, onSubmit: (formData) => {
       const product = data.inventory.find((item) => item.id === formData.get("product")); const quantity = Number(formData.get("quantity")); const type = formData.get("type");
       if (type === "exit" && product.quantity < quantity) { showNotice("A saída não pode ser maior que o estoque disponível."); return; }
       product.quantity = Number(product.quantity) + (type === "entry" ? quantity : -quantity);
+      if (type === "entry" && formData.has("registerExpense")) {
+        const amount = Number(formData.get("expenseAmount")) || (quantity * Number(product.cost || 0));
+        if (amount > 0) {
+          data.expenses.push({ id: uid("exp"), date: localDate(), description: `Compra de estoque: ${product.name}`, category: "Estoque", supplier: "", payment: formData.get("expensePayment") || "Pix", amount });
+        }
+      }
       closeModal(); saveData(); showNotice(`Movimentação de ${product.name} registrada.`);
     }
   });
+  const updateExpenseVisibility = () => {
+    const isEntry = $("#movementEntry")?.checked;
+    const wrap = $("#movementExpenseToggleWrap");
+    const fields = $("#movementExpenseFields");
+    if (wrap) wrap.style.display = isEntry ? "" : "none";
+    if (fields) fields.style.display = (isEntry && $("#movementRegisterExpense")?.checked) ? "" : "none";
+    if (!isEntry && $("#movementRegisterExpense")) $("#movementRegisterExpense").checked = false;
+  };
+  const updateSuggestedAmount = () => {
+    const select = $("#movementProduct");
+    const cost = Number(select?.selectedOptions?.[0]?.dataset.cost || 0);
+    const quantity = Number($("#movementQuantity")?.value || 0);
+    const amountField = $("#movementExpenseAmount");
+    if (amountField && quantity > 0) amountField.value = (cost * quantity).toFixed(2);
+  };
+  $("#movementEntry")?.addEventListener("change", updateExpenseVisibility);
+  $("#movementExit")?.addEventListener("change", updateExpenseVisibility);
+  $("#movementRegisterExpense")?.addEventListener("change", updateExpenseVisibility);
+  $("#movementProduct")?.addEventListener("change", updateSuggestedAmount);
+  $("#movementQuantity")?.addEventListener("input", updateSuggestedAmount);
+  updateExpenseVisibility();
 }
 function openExpenseModal(expense = null) {
   const e = expense || { date: localDate(), description: "", category: "Estoque", supplier: "", payment: "Pix", amount: "" };
@@ -587,6 +779,56 @@ function bindEvents() {
     });
   }
 
+  const profilePhotoInput = $("#profilePhotoInput");
+  if (profilePhotoInput) {
+    profilePhotoInput.addEventListener("change", async () => {
+      const file = profilePhotoInput.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await resizePhotoToDataUrl(file);
+        pendingProfilePhoto = dataUrl;
+        renderProfileAvatarPreview(dataUrl);
+      } catch (erro) {
+        console.error(erro);
+        showNotice("Não foi possível processar essa imagem.");
+      } finally {
+        profilePhotoInput.value = "";
+      }
+    });
+  }
+
+  const profilePhotoRemove = $("#profilePhotoRemove");
+  if (profilePhotoRemove) {
+    profilePhotoRemove.onclick = () => {
+      pendingProfilePhoto = null;
+      renderProfileAvatarPreview(null);
+    };
+  }
+
+  const profileForm = $("#profileForm");
+  if (profileForm) {
+    profileForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!currentAdmin) return;
+      const existing = currentProfile() || {};
+      const photo = pendingProfilePhoto === undefined ? (existing.photo || null) : pendingProfilePhoto;
+      data.profiles = {
+        ...data.profiles,
+        [currentAdmin.username]: {
+          name: $("#profileName").value.trim(),
+          phone: $("#profilePhone").value.trim(),
+          role: $("#profileRole").value.trim(),
+          bio: $("#profileBio").value.trim(),
+          photo
+        }
+      };
+      pendingProfilePhoto = undefined;
+      applyProfileToChrome();
+      saveData("settings");
+      showNotice("Perfil atualizado.");
+    });
+  }
+
   const modalBackdrop = $("#modalBackdrop");
   if (modalBackdrop) {
     modalBackdrop.onclick = closeModal;
@@ -715,13 +957,44 @@ function savedAdminSession() {
   }
 }
 
+function currentProfile() {
+  if (!currentAdmin) return null;
+  return (data.profiles && data.profiles[currentAdmin.username]) || null;
+}
+function displayName() {
+  const profile = currentProfile();
+  return (profile && profile.name && profile.name.trim()) || currentAdmin?.name || "Administrador";
+}
+// Atualiza o cartão do usuário na barra lateral e o cabeçalho do dashboard
+// com a foto e o nome definidos em Configurações › Meu perfil.
+function applyProfileToChrome() {
+  if (!currentAdmin) return;
+  const profile = currentProfile();
+  const name = displayName();
+  $("#activeUserName").textContent = name;
+  $("#activeUserRole").textContent = "Administrador · acesso total";
+  const dash = $("#dashboardUserName");
+  if (dash) dash.textContent = name;
+  const sidebarAvatar = $(".user-card .avatar");
+  if (sidebarAvatar) {
+    if (profile && profile.photo) {
+      sidebarAvatar.style.backgroundImage = `url(${profile.photo})`;
+      sidebarAvatar.style.backgroundSize = "cover";
+      sidebarAvatar.style.backgroundPosition = "center";
+      sidebarAvatar.textContent = "";
+    } else {
+      sidebarAvatar.style.backgroundImage = "";
+      sidebarAvatar.textContent = initials(name);
+    }
+  }
+}
+
 function startAuthenticatedSession(account) {
   currentAdmin = account;
 
   document.body.classList.add("authenticated");
 
-  $("#activeUserName").textContent = account.name;
-  $("#activeUserRole").textContent = "Administrador · acesso total";
+  applyProfileToChrome();
 
   init();
 }

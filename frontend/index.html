@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 
 <body>
@@ -220,11 +220,8 @@
           <div>
             <p class="section-kicker">FINANCEIRO</p>
             <h2>Salário semanal</h2>
-            <p class="payroll-intro">Atenção: O cálculo é feito automaticanete pelo percentual de participação de cada funcionário em cada lavagem.</p>
+            <p class="payroll-intro">Atenção: o cálculo é feito automaticamente pelo percentual de participação de cada funcionário em cada lavagem.</p>
           </div><button class="secondary-button" id="printPayroll" type="button">▣ Imprimir resumo</button>
-        </div>
-        <div>
-          <div ></div>
         </div>
         <div class="period-picker"><label>Semana de <input type="date" id="payrollStart"></label><label>até <input
               type="date" id="payrollEnd"></label><button class="secondary-button" id="currentWeek" type="button">Semana
@@ -245,9 +242,38 @@
           <article class="metric-card accent">
             <div class="metric-icon">%</div>
             <div>
-              <p>Total a pagar</p><strong id="payrollTotal">R$ 0,00</strong><small>comissões da equipe</small>
+              <p>Total a pagar à equipe</p><strong id="payrollTotal">R$ 0,00</strong><small id="payrollTeamPercent">comissões da equipe</small>
             </div>
           </article>
+          <article class="metric-card revenue">
+            <div class="metric-icon">◆</div>
+            <div>
+              <p>Fica com o proprietário</p><strong id="payrollOwnerShare">R$ 0,00</strong><small id="payrollOwnerPercent">receita − comissões</small>
+            </div>
+          </article>
+        </div>
+        <div class="panel table-panel">
+          <div class="panel-header">
+            <div>
+              <h3>Resumo por função</h3>
+              <p>Quanto cada camada da equipe (gerente, lavador, auxiliar) representa no total pago</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Função</th>
+                  <th>Pessoas</th>
+                  <th>Percentual aplicado</th>
+                  <th>Lavagens</th>
+                  <th>Comissão paga</th>
+                  <th>% do total pago</th>
+                </tr>
+              </thead>
+              <tbody id="payrollRoleTable"></tbody>
+            </table>
+          </div>
         </div>
         <div class="panel table-panel">
           <div class="panel-header">
@@ -285,7 +311,7 @@
               estoque</button><button class="primary-button" id="openProduct" type="button">＋ Novo produto</button>
           </div>
         </div>
-        <div class="metric-grid compact-metrics">
+        <div class="metric-grid compact-metrics four-up">
           <article class="metric-card">
             <div class="metric-icon">◈</div>
             <div>
@@ -301,7 +327,13 @@
           <article class="metric-card">
             <div class="metric-icon">R$</div>
             <div>
-              <p>Valor em estoque</p><strong id="stockValue">R$ 0,00</strong><small>custo estimado</small>
+              <p>Valor parado em estoque</p><strong id="stockValue">R$ 0,00</strong><small>patrimônio hoje, não é gasto</small>
+            </div>
+          </article>
+          <article class="metric-card danger">
+            <div class="metric-icon">↓</div>
+            <div>
+              <p>Gasto com compras (mês)</p><strong id="stockSpendMonth">R$ 0,00</strong><small>saiu do caixa este mês</small>
             </div>
           </article>
         </div>
@@ -392,7 +424,8 @@
           </div>
           <div class="report-filters"><label>Data inicial<input type="date" id="reportStart"></label><label>Data
               final<input type="date" id="reportEnd"></label><label>Tipo de relatório<select id="reportType">
-                <option value="financial">Resumo financeiro</option>
+                <option value="financial">Resumo financeiro completo</option>
+                <option value="liquidity">Faturamento x Liquidez (caixa)</option>
                 <option value="services">Serviços realizados</option>
                 <option value="team">Produção da equipe</option>
               </select></label><label>Status dos serviços<select id="reportStatus">
@@ -412,7 +445,40 @@
             <p class="muted">Dados gerais exibidos na gestão.</p>
           </div>
         </div>
+
+        <form class="panel profile-form" id="profileForm">
+          <div class="panel-header">
+            <div>
+              <h3>Meu perfil</h3>
+              <p>Foto, nome de exibição e dados de contato. A senha de acesso não é alterada aqui.</p>
+            </div>
+          </div>
+          <div class="profile-editor">
+            <div class="profile-photo-block">
+              <div class="avatar profile-avatar-preview" id="profileAvatarPreview">A</div>
+              <div class="profile-photo-actions">
+                <label class="secondary-button file-button">Alterar foto<input type="file" id="profilePhotoInput" accept="image/*" hidden></label>
+                <button class="text-button" type="button" id="profilePhotoRemove">Remover foto</button>
+              </div>
+            </div>
+            <div class="form-grid profile-fields">
+              <label class="full">Nome de exibição<input id="profileName" placeholder="Como seu nome aparece no sistema"></label>
+              <label>Telefone / WhatsApp<input id="profilePhone" placeholder="(00) 00000-0000"></label>
+              <label>Cargo / função<input id="profileRole" placeholder="Ex.: Sócio-administrador"></label>
+              <label class="full">Sobre / observações<textarea id="profileBio" placeholder="Opcional"></textarea></label>
+            </div>
+          </div>
+          <div class="settings-note">Esta tela não altera usuário ou senha de acesso — apenas como seu perfil aparece no sistema.</div>
+          <div class="form-actions"><button class="primary-button" type="submit">Salvar meu perfil</button></div>
+        </form>
+
         <form class="panel settings-form" id="settingsForm">
+          <div class="panel-header">
+            <div>
+              <h3>Dados do negócio</h3>
+              <p>Informações usadas nos relatórios e no cabeçalho do sistema.</p>
+            </div>
+          </div>
           <div class="form-grid"><label>Nome do negócio<input id="businessName" required></label><label>WhatsApp<input
                 id="businessPhone" placeholder="(00) 00000-0000"></label><label>Meta mensal de faturamento (R$)<input
                 id="monthlyGoal" type="number" min="0" step="0.01"></label></div>
@@ -435,7 +501,7 @@
     <form id="modalForm" class="modal-form"></form>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 
 </html>

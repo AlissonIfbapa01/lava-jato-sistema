@@ -7,7 +7,8 @@ const app = express();
 
 
 app.use(cors());
-app.use(express.json());
+// Limite maior para comportar a foto de perfil (base64) enviada junto com os dados do sistema.
+app.use(express.json({ limit: '8mb' }));
 
 const pool = mysql.createPool({
     host: 'localhost',
